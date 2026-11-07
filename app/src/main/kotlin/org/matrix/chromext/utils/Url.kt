@@ -75,13 +75,27 @@ val invalidUserScriptUrls = mutableListOf<String>()
 
 fun isUserScript(url: String?, path: String? = null): Boolean {
   if (url == null) return false
-  if (url.endsWith(".user.js")) {
+
+  // Network script URLs must be classified from their URL path. resolveContentUrl()
+  // intentionally returns an empty string for http(s), which previously meant that
+  // ordinary .js URLs (and .user.js URLs with query strings) were never recognized.
+  val candidate =
+      path
+          ?: if (url.startsWith("content://")) {
+            resolveContentUrl(url)
+          } else {
+            runCatching { Uri.parse(url).lastPathSegment.orEmpty() }.getOrDefault("")
+          }
+  val scriptPath = candidate.substringBefore('?').substringBefore('#').lowercase()
+  if (!scriptPath.endsWith(".js")) return false
+
+  if (scriptPath.endsWith(".user.js")) {
     if (invalidUserScriptUrls.contains(url)) return false
-    invalidUserScriptDomains.forEach { if (url.startsWith("https://" + it) == true) return false }
-    return true
-  } else {
-    return (path ?: resolveContentUrl(url)).endsWith(".js")
+    invalidUserScriptDomains.forEach {
+      if (url.startsWith("https://" + it, ignoreCase = true)) return false
+    }
   }
+  return true
 }
 
 fun resolveContentUrl(url: String): String {

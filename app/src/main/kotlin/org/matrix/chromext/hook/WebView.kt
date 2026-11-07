@@ -36,6 +36,12 @@ object WebViewHook : BaseHook() {
     }
   }
 
+  private fun onUpdateUrl(url: String, view: Any?) {
+    if (url.startsWith("javascript") || view == null) return
+    Chrome.updateTab(view)
+    ScriptDbManager.invokeScript(url, view)
+  }
+
   private val ucViewClients = mutableSetOf<Class<*>>()
   private val ucChromeClients = mutableSetOf<Class<*>>()
 
@@ -99,12 +105,6 @@ object WebViewHook : BaseHook() {
     if (Chrome.packageName != "com.quark.browser") {
       findMethod(ChromeClient!!, true) { name == "onConsoleMessage" && parameterCount == 1 }
           .hookAfter { handleConsoleMessage(it.thisObject, it.args[0]) }
-    }
-
-    fun onUpdateUrl(url: String, view: Any?) {
-      if (url.startsWith("javascript") || view == null) return
-      Chrome.updateTab(view)
-      ScriptDbManager.invokeScript(url, view)
     }
 
     findMethod(WebView!!) { name == "setWebChromeClient" }

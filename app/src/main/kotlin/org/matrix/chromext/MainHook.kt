@@ -109,6 +109,26 @@ class MainHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
       if (ctx != null && lpparam.packageName != "android") Chrome.init(ctx, ctx.packageName)
 
+      // Quark uses UC/U4 WebView rather than android.webkit.WebView or Chromium's
+      // WindowAndroid. Keep this adapter isolated from the Chromium initialization path.
+      if (lpparam.packageName == "com.quark.browser") {
+        val context = ctx ?: run {
+          Log.w("Quark context is not ready; skip UC WebView hooks in this process")
+          return
+        }
+        Chrome.init(context, lpparam.packageName)
+        runCatching {
+          WebViewHook.WebView = Chrome.load("com.uc.webview.export.WebView")
+          WebViewHook.ViewClient = Chrome.load("com.uc.webview.export.WebViewClient")
+          WebViewHook.ChromeClient = Chrome.load("com.uc.webview.export.WebChromeClient")
+          initHooks(WebViewHook)
+          Log.i("UC/U4 WebView adapter initialized for Quark")
+        }.onFailure {
+          Log.ex(it, "Failed to initialize UC/U4 WebView adapter")
+        }
+        return
+      }
+
       if (Chrome.isMi) {
         WebViewHook.WebView = Chrome.load("com.miui.webkit.WebView")
         runCatching {

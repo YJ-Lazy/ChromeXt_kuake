@@ -28,6 +28,9 @@ object WebViewHook : BaseHook() {
       val webSettings = webView.invokeMethod { name == "getSettings" }
       if (webSettings?.invokeMethod { name == "getJavaScriptEnabled" } == true)
           Handler(Chrome.getContext().mainLooper).post {
+            if (Chrome.packageName == "com.quark.browser") {
+              Log.d("UC/U4 evaluateJavascript requested (${code.length} chars)")
+            }
             webView.invokeMethod(code, null) { name == "evaluateJavascript" }
           }
     }
@@ -90,7 +93,19 @@ object WebViewHook : BaseHook() {
         // public void onPageStarted (WebView view, String url, Bitmap favicon)
         .hookAfter {
           if (Chrome.isQihoo && it.thisObject::class.java.declaredMethods.size > 1) return@hookAfter
+          if (Chrome.packageName == "com.quark.browser") {
+            Log.d("UC/U4 onPageStarted callback received")
+          }
           onUpdateUrl(it.args[1] as String, it.args[0])
+        }
+
+    // Keep a second lifecycle signal for diagnosis only. Do not inject again here: doing so could
+    // execute ordinary user scripts twice on a single document.
+    findMethod(ViewClient!!, true) { name == "onPageFinished" && parameterCount == 2 }
+        .hookAfter {
+          if (Chrome.packageName == "com.quark.browser") {
+            Log.d("UC/U4 onPageFinished callback received")
+          }
         }
 
     findMethod(Activity::class.java) { name == "onStop" }

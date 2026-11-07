@@ -39,6 +39,7 @@ jobs:
       run: mv app/build/outputs/apk/debug/app-debug.apk app/build/ChromeXt_debug.apk
 
     - name: Prepare release APK
+      id: prepare_release
       if: ${{ ( github.event_name != 'pull_request' && github.ref == 'refs/heads/master' ) || github.ref_type == 'tag' }}
       run: mv app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/release/ChromeXt-unsigned.apk
 
@@ -60,6 +61,7 @@ jobs:
 
     - name: Sign app APK
       id: sign_app
+      continue-on-error: true
       if: ${{ steps.signing.outputs.configured == 'true' }}
       uses: noriban/sign-android-release@master
       with:
@@ -84,7 +86,7 @@ jobs:
         path: ${{ steps.sign_app.outputs.signedReleaseFile }}
 
     - name: Upload unsigned release APK
-      if: ${{ steps.signing.outputs.configured == 'false' }}
+      if: ${{ always() && steps.prepare_release.outcome == 'success' && steps.sign_app.outcome != 'success' }}
       uses: actions/upload-artifact@v4
       with:
         name: ChromeXt_unsigned.apk

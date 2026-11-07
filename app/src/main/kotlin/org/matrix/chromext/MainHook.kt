@@ -134,8 +134,11 @@ class MainHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                 lpparam.classLoader.loadClass("com.uc.webview.export.WebViewClient")
             WebViewHook.ChromeClient =
                 lpparam.classLoader.loadClass("com.uc.webview.export.WebChromeClient")
-            initHooks(WebViewHook)
-            Log.i("UC/U4 WebView adapter initialized for Quark")
+            // Quark does not expose Chromium's WindowAndroid/app-menu classes. Keep the
+            // script-install and developer-tools entry reachable through Android's floating
+            // text-selection action mode instead of initializing Chromium-only menu hooks.
+            initHooks(WebViewHook, ContextMenuHook)
+            Log.i("UC/U4 WebView adapter and selection-menu hook initialized for Quark")
           }.onFailure {
             Log.ex(it, "Failed to initialize UC/U4 WebView adapter")
           }

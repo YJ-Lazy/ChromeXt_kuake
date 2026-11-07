@@ -1,6 +1,7 @@
 package org.matrix.chromext
 
 import android.app.AndroidAppHelper
+import android.app.Application
 import android.content.Context
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -110,21 +111,34 @@ class MainHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
       if (ctx != null && lpparam.packageName != "android") Chrome.init(ctx, ctx.packageName)
 
       // Quark uses UC/U4 WebView rather than android.webkit.WebView or Chromium's
-      // WindowAndroid. Keep this adapter isolated from the Chromium initialization path.
+      // WindowAndroid. Its Application may not exist yet during handleLoadPackage, so defer
+      // initialization until Application.attach supplies a valid browser context.
       if (lpparam.packageName == "com.quark.browser") {
-        val context = ctx ?: run {
-          Log.w("Quark context is not ready; skip UC WebView hooks in this process")
+        val attach = Application::class.java.declaredMethods.firstOrNull {
+          it.name == "attach" &&
+              it.parameterTypes.contentEquals(arrayOf(Context::class.java))
+        }
+        if (attach == null) {
+          Log.e("Cannot locate Application.attach(Context) for Quark")
           return
         }
-        Chrome.init(context, lpparam.packageName)
-        runCatching {
-          WebViewHook.WebView = Chrome.load("com.uc.webview.export.WebView")
-          WebViewHook.ViewClient = Chrome.load("com.uc.webview.export.WebViewClient")
-          WebViewHook.ChromeClient = Chrome.load("com.uc.webview.export.WebChromeClient")
-          initHooks(WebViewHook)
-          Log.i("UC/U4 WebView adapter initialized for Quark")
-        }.onFailure {
-          Log.ex(it, "Failed to initialize UC/U4 WebView adapter")
+        var initialized = false
+        attach.hookAfter {
+          if (initialized) return@hookAfter
+          initialized = true
+          val application = it.thisObject as Application
+          runCatching {
+            Chrome.init(application, lpparam.packageName)
+            WebViewHook.WebView = lpparam.classLoader.loadClass("com.uc.webview.export.WebView")
+            WebViewHook.ViewClient =
+                lpparam.classLoader.loadClass("com.uc.webview.export.WebViewClient")
+            WebViewHook.ChromeClient =
+                lpparam.classLoader.loadClass("com.uc.webview.export.WebChromeClient")
+            initHooks(WebViewHook)
+            Log.i("UC/U4 WebView adapter initialized for Quark")
+          }.onFailure {
+            Log.ex(it, "Failed to initialize UC/U4 WebView adapter")
+          }
         }
         return
       }

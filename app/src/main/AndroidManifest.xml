@@ -11,6 +11,7 @@
 		<package android:name="com.coccoc.trinhduyet"/>
 		<package android:name="com.coccoc.trinhduyet_beta"/>
 		<package android:name="com.kiwibrowser.browser"/>
+		<package android:name="com.quark.browser"/>
 		<package android:name="com.naver.whale"/>
 		<package android:name="com.vivaldi.browser"/>
 		<package android:name="com.vivaldi.browser.snapshot"/>

@@ -36,42 +36,70 @@ object WebViewHook : BaseHook() {
     }
   }
 
-  override fun init() {
+  private val ucViewClients = mutableSetOf<Class<*>>()
+  private val ucChromeClients = mutableSetOf<Class<*>>()
 
-    findMethod(ChromeClient!!, true) { name == "onConsoleMessage" && parameterCount == 1 }
-        // public boolean onConsoleMessage (ConsoleMessage consoleMessage)
+  private fun handleConsoleMessage(chromeClient: Any, consoleMessage: Any) {
+    val messageLevel = consoleMessage.invokeMethod { name == "messageLevel" }
+    val sourceId = consoleMessage.invokeMethod { name == "sourceId" } as String
+    val lineNumber = consoleMessage.invokeMethod { name == "lineNumber" }
+    val message = consoleMessage.invokeMethod { name == "message" } as String
+    if (messageLevel.toString() == "TIP" &&
+        sourceId.startsWith("local://ChromeXt/init") &&
+        lineNumber == Local.anchorInChromeXt) {
+      val webView =
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            records
+                .find {
+                  if (Chrome.isQihoo) {
+                    val mProvider = findField(WebView!!) { name == "mProvider" }
+                    mProvider.get(it.get())
+                  } else {
+                    it.get()
+                  }
+                      ?.invokeMethod { name == "getWebChromeClient" } == chromeClient
+                }
+                ?.get()
+          } else Chrome.getTab()
+      Listener.startAction(message, webView, chromeClient, sourceId)
+    } else {
+      Log.d(messageLevel.toString() + ": [${sourceId}@${lineNumber}] ${message}")
+    }
+  }
+
+  private fun hookUcWebViewClient(clientClass: Class<*>) {
+    if (!ucViewClients.add(clientClass)) return
+    findMethod(clientClass, true) {
+          name == "onPageStarted" && parameterCount == 3
+        }
         .hookAfter {
-          // Don't use ConsoleMessage to specify this method since Mi Browser uses its own
-          // implementation
-          // This should be the way to communicate with the front-end of ChromeXt
-          val chromeClient = it.thisObject
-          val consoleMessage = it.args[0]
-          val messageLevel = consoleMessage.invokeMethod { name == "messageLevel" }
-          val sourceId = consoleMessage.invokeMethod { name == "sourceId" } as String
-          val lineNumber = consoleMessage.invokeMethod { name == "lineNumber" }
-          val message = consoleMessage.invokeMethod { name == "message" } as String
-          if (messageLevel.toString() == "TIP" &&
-              sourceId.startsWith("local://ChromeXt/init") &&
-              lineNumber == Local.anchorInChromeXt) {
-            val webView =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                  records
-                      .find {
-                        if (Chrome.isQihoo) {
-                              val mProvider = findField(WebView!!) { name == "mProvider" }
-                              mProvider.get(it.get())
-                            } else {
-                              it.get()
-                            }
-                            ?.invokeMethod { name == "getWebChromeClient" } == chromeClient
-                      }
-                      ?.get()
-                } else Chrome.getTab()
-            Listener.startAction(message, webView, chromeClient, sourceId)
-          } else {
-            Log.d(messageLevel.toString() + ": [${sourceId}@${lineNumber}] ${message}")
+          if (it.args.size >= 2 && it.args[1] is String) {
+            Log.d("UC/U4 onPageStarted callback received")
+            onUpdateUrl(it.args[1] as String, it.args[0])
           }
         }
+    runCatching {
+      findMethod(clientClass, true) { name == "onPageFinished" && parameterCount == 2 }
+          .hookAfter { Log.d("UC/U4 onPageFinished callback received") }
+    }.onFailure { Log.ex(it, "Unable to hook UC/U4 onPageFinished") }
+  }
+
+  private fun hookUcWebChromeClient(clientClass: Class<*>) {
+    if (!ucChromeClients.add(clientClass)) return
+    runCatching {
+      findMethod(clientClass, true) { name == "onConsoleMessage" && parameterCount == 1 }
+          .hookAfter { handleConsoleMessage(it.thisObject, it.args[0]) }
+    }.onFailure { Log.ex(it, "Unable to hook UC/U4 onConsoleMessage") }
+  }
+
+  override fun init() {
+
+    // Quark replaces WebChromeClient with app-specific subclasses. Hook the concrete
+    // client instance when it is attached instead of only hooking the UC base class.
+    if (Chrome.packageName != "com.quark.browser") {
+      findMethod(ChromeClient!!, true) { name == "onConsoleMessage" && parameterCount == 1 }
+          .hookAfter { handleConsoleMessage(it.thisObject, it.args[0]) }
+    }
 
     fun onUpdateUrl(url: String, view: Any?) {
       if (url.startsWith("javascript") || view == null) return
@@ -83,30 +111,35 @@ object WebViewHook : BaseHook() {
         .hookAfter {
           val webView = it.thisObject
           records.removeAll(records.filter { it.get() == null || it.get() == webView })
-          if (it.args[0] != null) records.add(WeakReference(webView))
+          val client = it.args[0]
+          if (client != null) {
+            records.add(WeakReference(webView))
+            if (Chrome.packageName == "com.quark.browser") {
+              hookUcWebChromeClient(client.javaClass)
+            }
+          }
         }
+
+    if (Chrome.packageName == "com.quark.browser") {
+      findMethod(WebView!!) { name == "setWebViewClient" }
+          .hookAfter {
+            val client = it.args.firstOrNull()
+            if (client != null) hookUcWebViewClient(client.javaClass)
+          }
+    }
 
     findMethod(WebView!!) { name == "onAttachedToWindow" }
         .hookAfter { Chrome.updateTab(it.thisObject) }
 
-    findMethod(ViewClient!!, true) { name == "onPageStarted" }
-        // public void onPageStarted (WebView view, String url, Bitmap favicon)
-        .hookAfter {
-          if (Chrome.isQihoo && it.thisObject::class.java.declaredMethods.size > 1) return@hookAfter
-          if (Chrome.packageName == "com.quark.browser") {
-            Log.d("UC/U4 onPageStarted callback received")
+    if (Chrome.packageName != "com.quark.browser") {
+      findMethod(ViewClient!!, true) { name == "onPageStarted" }
+          // public void onPageStarted (WebView view, String url, Bitmap favicon)
+          .hookAfter {
+            if (Chrome.isQihoo && it.thisObject::class.java.declaredMethods.size > 1)
+                return@hookAfter
+            onUpdateUrl(it.args[1] as String, it.args[0])
           }
-          onUpdateUrl(it.args[1] as String, it.args[0])
-        }
-
-    // Keep a second lifecycle signal for diagnosis only. Do not inject again here: doing so could
-    // execute ordinary user scripts twice on a single document.
-    findMethod(ViewClient!!, true) { name == "onPageFinished" && parameterCount == 2 }
-        .hookAfter {
-          if (Chrome.packageName == "com.quark.browser") {
-            Log.d("UC/U4 onPageFinished callback received")
-          }
-        }
+    }
 
     findMethod(Activity::class.java) { name == "onStop" }
         .hookBefore { ScriptDbManager.updateScriptStorage() }

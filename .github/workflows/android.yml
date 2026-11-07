@@ -61,7 +61,7 @@ jobs:
     - name: Sign app APK
       id: sign_app
       if: ${{ steps.signing.outputs.configured == 'true' }}
-      uses: noriban/sign-android-release@v1
+      uses: noriban/sign-android-release@master
       with:
         releaseDirectory: app/build/outputs/apk/release
         signingKeyBase64: ${{ secrets.SIGNING_KEY }}

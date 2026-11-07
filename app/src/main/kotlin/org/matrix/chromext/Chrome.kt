@@ -73,8 +73,13 @@ object Chrome {
     version = (if (version?.startsWith("v") == true) "" else "v") + version
     Log.i("Package: ${packageName}, ${version}")
 
-    setupHttpCache(ctx)
-    saveRedirectCookie()
+    // UC/U4 browsers may use their own network stack and may not expose Android's
+    // internal OkHttp implementation. These integrations are optional; their failure must not
+    // prevent the user-script engine from initializing.
+    runCatching { setupHttpCache(ctx) }
+        .onFailure { Log.ex(it, "Failed to initialize HTTP response cache") }
+    runCatching { saveRedirectCookie() }
+        .onFailure { Log.ex(it, "Optional redirect-cookie hook is unavailable") }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val groupId = "org.matrix.chromext"
       val group = NotificationChannelGroup(groupId, "ChromeXt")

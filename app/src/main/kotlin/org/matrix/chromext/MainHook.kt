@@ -11,6 +11,7 @@ import de.robv.android.xposed.IXposedHookZygoteInit
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import org.matrix.chromext.hook.BaseHook
 import org.matrix.chromext.hook.ContextMenuHook
+import org.matrix.chromext.hook.FloatingEntryHook
 import org.matrix.chromext.hook.PageInfoHook
 import org.matrix.chromext.hook.PageMenuHook
 import org.matrix.chromext.hook.PreferenceHook
@@ -134,11 +135,11 @@ class MainHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                 lpparam.classLoader.loadClass("com.uc.webview.export.WebViewClient")
             WebViewHook.ChromeClient =
                 lpparam.classLoader.loadClass("com.uc.webview.export.WebChromeClient")
-            // Quark does not expose Chromium's WindowAndroid/app-menu classes. Keep the
-            // script-install and developer-tools entry reachable through Android's floating
-            // text-selection action mode instead of initializing Chromium-only menu hooks.
-            initHooks(WebViewHook, ContextMenuHook)
-            Log.i("UC/U4 WebView adapter and selection-menu hook initialized for Quark")
+            // Quark does not expose Chromium's WindowAndroid/app-menu classes and its
+            // selection toolbar does not reliably expose Android ActionMode callbacks.
+            // Use a native floating entry attached directly to each UC/U4 WebView instead.
+            initHooks(WebViewHook, FloatingEntryHook)
+            Log.i("UC/U4 WebView adapter and floating ChromeXt entry initialized for Quark")
           }.onFailure {
             Log.ex(it, "Failed to initialize UC/U4 WebView adapter")
           }

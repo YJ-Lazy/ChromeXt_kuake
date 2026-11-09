@@ -18,6 +18,7 @@ import org.matrix.chromext.hook.PreferenceHook
 import org.matrix.chromext.hook.UserScriptHook
 import org.matrix.chromext.hook.WebViewHook
 import org.matrix.chromext.utils.Log
+import org.matrix.chromext.utils.LogRecorder
 import org.matrix.chromext.utils.findMethodOrNull
 import org.matrix.chromext.utils.hookAfter
 
@@ -130,6 +131,7 @@ class MainHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
           val application = it.thisObject as Application
           runCatching {
             Chrome.init(application, lpparam.packageName)
+            LogRecorder.initialize(application)
             WebViewHook.WebView = lpparam.classLoader.loadClass("com.uc.webview.export.WebView")
             WebViewHook.ViewClient =
                 lpparam.classLoader.loadClass("com.uc.webview.export.WebViewClient")

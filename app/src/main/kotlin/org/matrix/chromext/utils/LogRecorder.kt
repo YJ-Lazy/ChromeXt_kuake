@@ -40,16 +40,24 @@ object LogRecorder {
 
   fun read(context: Context? = null): String {
     val file = logFile(context) ?: return "日志文件尚未创建。请先在夸克中触发一次 ChromeXt。"
-    return runCatching { if (file.exists()) file.readText() else "暂无日志。" }
-        .getOrElse { "读取日志失败：${it}" }
+    return runCatching {
+      val backup = File(file.parentFile, "$FILE_NAME.1")
+      (if (backup.exists()) backup.readText() + "\\n--- rotated log ---\\n" else "") +
+          if (file.exists()) file.readText() else "暂无日志。"
+    }.getOrElse { "读取日志失败：${it}" }
   }
 
   fun clear(context: Context? = null): Boolean =
-      runCatching { logFile(context)?.apply { parentFile?.mkdirs(); writeText("") } != null }
-          .getOrDefault(false)
+      runCatching {
+        val file = logFile(context) ?: return false
+        file.parentFile?.mkdirs()
+        file.writeText("")
+        File(file.parentFile, "$FILE_NAME.1").delete()
+        true
+      }.getOrDefault(false)
 
   fun write(level: String, message: String, context: Context? = null) {
-    if (level != "ERROR" && level != "WARN" && !isEnabled(context)) return
+    if (!isEnabled(context)) return
     val target = resolveContext(context) ?: return
     runCatching {
       val file = File(target.filesDir, "diagnostics/$FILE_NAME")

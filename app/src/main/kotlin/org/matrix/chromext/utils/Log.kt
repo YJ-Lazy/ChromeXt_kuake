@@ -26,7 +26,6 @@ object Log {
       }
     }
     LogRecorder.write("DEBUG", msg)
-    }
   }
 
   fun w(msg: String) {

@@ -14,6 +14,7 @@ import org.matrix.chromext.utils.findMethod
 import org.matrix.chromext.utils.hookAfter
 import org.matrix.chromext.utils.invokeMethod
 import org.matrix.chromext.utils.isUserScript
+import org.matrix.chromext.utils.Log
 import org.matrix.chromext.utils.shouldBypassSandbox
 
 /**
@@ -40,6 +41,7 @@ object FloatingEntryHook : BaseHook() {
   private fun showEntry(webView: View) {
     if (!webView.isAttachedToWindow || entries.containsKey(webView)) return
     val context = webView.context
+    Log.d("Quark floating entry: attaching to ${webView.javaClass.name}")
     val button = TextView(context).apply {
       text = "CX"
       textSize = 13f
@@ -73,6 +75,8 @@ object FloatingEntryHook : BaseHook() {
 
   private fun showMenu(anchor: View, webView: View) {
     val url = runCatching { Chrome.getUrl(webView) }.getOrNull()
+    val safeUrl = url?.substringBefore("?")?.substringBefore("#")
+    Log.d("Quark floating menu opened; url=$safeUrl; userscript=${isUserScript(url)}")
     val menu = PopupMenu(anchor.context, anchor)
     menu.menu.add(0, MENU_MANAGE, 0, "脚本管理")
     if (isUserScript(url)) {
@@ -80,13 +84,15 @@ object FloatingEntryHook : BaseHook() {
     }
     menu.menu.add(0, MENU_CONSOLE, 2, "开发者控制台")
     menu.setOnMenuItemClickListener { item ->
+      Log.i("Quark floating menu action clicked: ${item.title}; url=$safeUrl")
       when (item.itemId) {
         MENU_MANAGE -> {
           runCatching {
-            webView.invokeMethod(FRONT_END_URL) {
+            val result = webView.invokeMethod(FRONT_END_URL) {
               name == "loadUrl" && parameterTypes.size == 1 &&
                   parameterTypes[0] == String::class.java
             }
+            Log.i("Quark script manager loadUrl dispatched; result=$result")
           }.onFailure {
             org.matrix.chromext.utils.Log.ex(it, "Unable to open ChromeXt script manager")
           }
@@ -94,17 +100,24 @@ object FloatingEntryHook : BaseHook() {
         }
         MENU_INSTALL -> {
           if (url != null) {
-            Chrome.evaluateJavascript(
-                listOf("Symbol.installScript(true);"),
-                webView,
-                null,
-                shouldBypassSandbox(url),
-            )
+            Log.i("Quark install requested; url=$safeUrl; bypassSandbox=${shouldBypassSandbox(url)}")
+            runCatching {
+              Chrome.evaluateJavascript(
+                  listOf("Symbol.installScript(true);"),
+                  webView,
+                  null,
+                  shouldBypassSandbox(url),
+              )
+            }.onFailure { Log.ex(it, "Quark install JavaScript dispatch failed") }
+          } else {
+            Log.e("Quark install requested but current URL is null")
           }
           true
         }
         MENU_CONSOLE -> {
-          Chrome.evaluateJavascript(listOf(Local.openEruda), webView)
+          Log.i("Quark Eruda console requested; url=$safeUrl")
+          runCatching { Chrome.evaluateJavascript(listOf(Local.openEruda), webView) }
+              .onFailure { Log.ex(it, "Quark Eruda JavaScript dispatch failed") }
           true
         }
         else -> false
